@@ -8,4 +8,6 @@ The main controller is mb_controller_odometry.c located inside BeagleBoneImporta
 
 Refer report for mathematical modelling and discussion
 
+Refer presentation for a quick overview: Vrushali_Thesis.pptx
+
 All files and folders from the Beaglebone mounted on the balancebot were not uploaded. Please email me if you need Makefiles and header files. 
