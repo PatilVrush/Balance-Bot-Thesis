@@ -10,7 +10,6 @@
 #include "mb_defs.h"
 #include "mb_structs.h"
 
-
 float overallGain1_o;
 float kp1_o;
 float ki1_o;
@@ -22,7 +21,7 @@ float ki2_o;
 float kd2_o;
 
 float kp3_o;
-float kd3_o;
+float kp4_o;
 
 float t;
 float t_dot;
@@ -50,14 +49,14 @@ rc_filter_t F3_o = RC_FILTER_INITIALIZER;
 
 int mb_controller_odometry_load_config(){
 
-    FILE* file = fopen("ss_cnt.cfg", "r");
+    FILE* file = fopen("bs_cnt.cfg", "r");
     if (file == NULL){
         printf("Error opening %s\n", CFG_PATH );
     }
 
     /* parse your config file here */
     
-    // ====== State Space ===========
+    /*
     fscanf(file, "%f", &t);
     fscanf(file, "%f", &t_dot);
     fscanf(file, "%f", &p);
@@ -66,8 +65,7 @@ int mb_controller_odometry_load_config(){
     fscanf(file, "%f", &Ki);
     fscanf(file, "%f", &kpt);
     fscanf(file, "%f", &to_travel_o);
-    /*
-    // ========== PID ==============
+    
     
     fscanf(file, "%f", &overallGain1_o);
     fscanf(file, "%f", &kp1_o);
@@ -78,11 +76,11 @@ int mb_controller_odometry_load_config(){
     fscanf(file, "%f", &ki2_o);
     fscanf(file, "%f", &kd2_o);
     fscanf(file, "%f", &kp3_o);
-    fscanf(file, "%f", &kd3_o);
+    fscanf(file, "%f", &kp4_o);
     fscanf(file, "%f", &bodyAngleOffset_o);
     fscanf(file, "%f", &actVolt_o);
     fscanf(file, "%f", &to_travel_o);
-
+   
     kp1_o = kp1_o/overallGain1_o;
     ki1_o = ki1_o/overallGain1_o;
     kd1_o = kd1_o/overallGain1_o;
@@ -90,14 +88,18 @@ int mb_controller_odometry_load_config(){
     kp2_o = kp2_o/overallGain2_o;
     ki2_o = ki2_o/overallGain2_o;
     kd2_o = kd2_o/overallGain2_o;
-    
-    // ===== Back Stepping ==========
-
-    fscanf(file, "%f", &k5b);
-    fscanf(file, "%f", &k3b);
-    fscanf(file, "%f", &bodyAngleOffset_o);
     */
+     
+    fscanf(file, "%f", &k3b);
+    fscanf(file, "%f", &k5b);
+    fscanf(file, "%f", &bodyAngleOffset_o);
+    fscanf(file, "%f", &kp2_o);
+    fscanf(file, "%f", &ki2_o);
+    fscanf(file, "%f", &kd2_o);
+    fscanf(file, "%f", &kp3_o);
+    fscanf(file, "%f", &to_travel_o);
     
+
     fclose(file);
     return 0;
 }
@@ -117,7 +119,7 @@ int mb_controller_init_odometry(){
         return -1;
     }
     
-    if(rc_filter_pid(&F3_o, kp3_o, 0, kd3_o, 2*DT, DT)){
+    if(rc_filter_pid(&F3_o, kp3_o, 0, 0 , 2*DT, DT)){
     fprintf(stderr, "ERROR in mb_controller, failed to make steering loop filter\n");
         return -1;
     }
@@ -138,25 +140,25 @@ int mb_controller_update_odometry(mb_state_t* mb_state, mb_odometry_t*mb_odometr
     float phi_error;
     float theta_error;
     float head_error;
-
+    
     mb_state->to_travel = to_travel_o;
     
     phi_error = mb_state->spPhi - mb_state->phi;
     mb_state->spTheta = rc_filter_march(&F2_o, phi_error) + bodyAngleOffset_o;
-
+    
     //mb_state->spTheta = bodyAngleOffset_o;    
     
     theta_error = mb_state->spTheta - mb_state->theta;
     u_1 = rc_filter_march(&F1_o, theta_error);
     
     head_error = mb_state->spHeading - mb_odometry->heading;
-    mb_state->diff = kp3_o*(head_error);
-    
+    mb_state->diffl = kp3_o*(head_error);
+    mb_state->diffr = kp4_o*(head_error);
     u = u_1;
     
     if(-1.2<=u<=1.2){
-   	mb_state->left_cmd = u-mb_state->diff;
-    	mb_state->right_cmd = u+mb_state->diff;
+   	mb_state->left_cmd = u-mb_state->diffl;
+    	mb_state->right_cmd = u+mb_state->diffr;
     }
 
     else if (u<-1){	
@@ -168,10 +170,12 @@ int mb_controller_update_odometry(mb_state_t* mb_state, mb_odometry_t*mb_odometr
 	mb_state->left_cmd = 1;
     	mb_state->right_cmd = 1;
     }
-    */ 
-    // ++++++++++++++++++++++++++++++ STATE SPACE CONTROLLER +++++++++++++++++++++++++++++++++++++++++++++++++++ \\
 
+    */ 
+
+    // ++++++++++++++++++++++++++++++ STATE SPACE CONTROLLER +++++++++++++++++++++++++++++++++++++++++++++++++++ \\
     
+    /*
     mb_state->to_travel = to_travel_o;
     theta_error = mb_state->theta - 0.0;
     phi_error = mb_state->spPhi - mb_state->phi;
@@ -196,49 +200,54 @@ int mb_controller_update_odometry(mb_state_t* mb_state, mb_odometry_t*mb_odometr
 
     u_t = u_1+u_2+u_3+u_4;
 
+    //u = N_bar*mb_state->spPhi+(-1*u_t);
     u = (Ki*integration) + (-1*u_t);
 
     				       
     head_error = mb_state->spHeading - mb_odometry->heading;
     //mb_state->diff = rc_filter_march(&F3_o, head_error);
-    mb_state->diff = kpt*(head_error);
+    mb_state->diffl = kpt*(head_error);
                
 						       
     //mb_state->diff = 0;
-    mb_state->left_cmd = u - mb_state->diff;
-    mb_state->right_cmd = u + mb_state->diff;
-								
-    
-    
-    // ++++++++++++++++++++++++++++++ BACK STEPPING CONTROLLER FOR SWING UP +++++++++++++++++++++++++++++++++++++++++++++++++++ \\
-    
-    /*
-    float u =0;
-    k3b = k3
-    k5b = k4
-    mb_state->spTheta = bodyAngleOffset_o; 
-   
-    float b1 =1;
-    float b2 =0.02;
-    float a1 =0.002;
-    float a2 =0.0046;
-    float a3 =0.018;
-    float a4 =1.1317;
-    
-    e2 = mb_state.thetadot + k3*(mb_state.theta-mb_state.spTheta);
-    
-    num1 = (a4*a1-a2*a2*(cos(mb_state.theta))*mb_state.thetadot*mb_state.thetadot)* sin(mb_state.theta)
-    num2 = (k4*e2+k3*mb_state.thetadot)*(a1*a3-a2*a2*(cos(mb_state.theta))(cos(mb_state.theta))
-    num3 = b2/b1*(mb_state.phidot-mb_state.thetadot)
-    den1 = (a1+a2*(cos(mb_state.theta)))*b1
-
-    u = ((num1+num2)/den1)+num3
-    mb_state->left_cmd = u;
-    mb_state->right_cmd = u;
-   
+    mb_state->left_cmd = u - mb_state->diffl;
+    mb_state->right_cmd = u + mb_state->diffl;
     */
+        
+    // ++++++++++++++++++++++++++++++ BACK STEPPING CONTROLLER +++++++++++++++++++++++++++++++++++++++++++++++++++ \\
+    
+    
+    float ut = 0;
+    float up = 0;
 
-    // ++++++++++++++++++++++++++++++++++++++++++++ MODEL ESTIMATION ++++++++++++++++++++++++++++++++++++++++++++++++++++++++ \\
+    mb_state->spTheta = bodyAngleOffset_o;    
+    
+    float b1 =1;
+    float b2 =0.023;
+    float a1 =0.003;
+    float a2 =0.0045;
+    float a3 =0.018;
+    float a4 =1.0;
+    
+    float e2 = mb_state->thetadot+k3b*(mb_state->theta-mb_state->spTheta);
+    float num1 = (a4*a1-a2*a2*(cos(mb_state->theta))*mb_state->thetadot*mb_state->thetadot)*sin(mb_state->theta);
+    float num2 = (k5b*e2+k3b*mb_state->thetadot)*(a1*a3-a2*a2*(cos(mb_state->theta))*(cos(mb_state->theta)));
+    float num3 = (b2/b1)*(mb_state->phidot-mb_state->thetadot);
+    float den1 = (a1+a2*(cos(mb_state->theta)))*b1;
+
+    ut = ((num1+num2)/den1)+num3; 
+              
+    mb_state->to_travel = to_travel_o;
+    phi_error = mb_state->spPhi - mb_state->phi;
+    up = rc_filter_march(&F2_o, phi_error);
+
+    head_error = mb_state->spHeading - mb_odometry->heading;
+    mb_state->diffl = kp3_o*(head_error);
+    
+    mb_state->left_cmd = ut + (up-mb_state->diffl);
+    mb_state->right_cmd = ut + (up+mb_state->diffl);
+    
+    // ++++++++++++++++++++++++++++++++++++++++++++ MODEL ESTIMATION +++++++++++++++++++++++++++++++++++++++++++++++++++++ \\
     
     
     /*
@@ -288,8 +297,38 @@ int mb_controller_update_odometry(mb_state_t* mb_state, mb_odometry_t*mb_odometr
 
     */
 
+    /*   
+    else {
+	
+    	float u; 
+
+    	//printf("SMP is: %d\n" , smp);
     
-    FILE* fp = fopen("box_cntrl_ssp.csv", "a");
+  	if (smp == 7){
+	    smp1 = (-4);
+	    printf("Here1");
+    	}
+
+   	 else if (smp == (-4)){
+	    smp1 = 0;
+	    printf("Here2\n");
+    	}
+
+    	else{
+	    smp1 = 7;
+	    printf("Here3\n");
+    	}
+
+    	u = smp1;
+    	printf("u is %f\n" , u);
+    	mb_state->left_cmd = u;
+    	mb_state->right_cmd = u;
+    	smp = smp1;
+    }
+
+    */
+
+    FILE* fp = fopen("state_space_box_Nbar.csv", "a");
 
   
     fprintf(fp, "%7.3f", mb_state->theta);
@@ -326,7 +365,7 @@ int mb_controller_update_odometry(mb_state_t* mb_state, mb_odometry_t*mb_odometr
     fprintf(fp, "%s", ",");
     fprintf(fp, "%7.3f", mb_state->spHeading);
     fprintf(fp, "%s", ",");
-    fprintf(fp, "%7.3f", mb_state->diff);
+    fprintf(fp, "%7.3f", mb_state->diffl);
     fprintf(fp, "%s", ",");
     fprintf(fp, "%7.3f", mb_state->left_cmd);
     fprintf(fp, "%s", ",");
