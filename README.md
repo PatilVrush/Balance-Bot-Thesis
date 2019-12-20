@@ -5,6 +5,7 @@ Demo: https://youtu.be/muQNJxaPyAU
 All Folders have ReadMe.pdf 
 
 The main controller is mb_controller_odometry.c located inside BeagleBoneImportantCodes
+Path Planning Algorithm is included in balancebot.c
 
 Refer report for mathematical modelling and discussion
 
